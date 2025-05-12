@@ -46,7 +46,7 @@ class VisitorAdmin(admin.ModelAdmin):
     search_fields = ['full_name','resident__name']
 
 class ParkingCardAdmin(admin.ModelAdmin):
-    list_filter = list_display = ['id', 'card_number','resident__name', 'license_plate']
+    list_filter = list_display = ['id', 'card_number','resident__name','visitor__full_name', 'license_plate']
     search_fields = ['card_number', 'resident__name']
 
 class FeeTypeForm(forms.ModelForm):
