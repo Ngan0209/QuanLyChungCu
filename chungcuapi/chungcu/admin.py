@@ -30,8 +30,8 @@ class ApartmentAdmin(admin.ModelAdmin):
     search_fields = ['number']
 
 class ResidentAdmin(admin.ModelAdmin):
-    list_filter = list_display = ['id', 'name', 'relationship_to_head', 'apartment__number']
-    search_fields = ['name','apartment__number']
+    list_filter = list_display = ['id', 'name','user__username', 'relationship_to_head', 'apartment__number']
+    search_fields = ['name','apartment__number','user__username']
 
 class LockerItemAdmin(admin.ModelAdmin):
     list_filter = list_display = ['id', 'locker_number', 'resident__name']
