@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from tkinter.font import names
 from xml.dom import ValidationErr
 
@@ -5,9 +6,12 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from cloudinary.models import CloudinaryField
+from ckeditor.fields import RichTextField
 
+AbstractUser.username.field.error_messages['unique'] = 'Tên đăng nhập đã tồn tại'
 class User(AbstractUser):
-    pass
+    avatar = CloudinaryField('avatar',null = True, )
 
 class BaseModel(models.Model):
     create_time = models.DateTimeField(auto_now_add=True)
@@ -15,11 +19,12 @@ class BaseModel(models.Model):
 
     class Meta:
         abstract = True
+        ordering = ['-id']
 
 class Building(BaseModel):
     name = models.CharField(max_length=100)
     address = models.CharField(max_length=100)
-    description = models.TextField()
+    description = RichTextField(null=True, blank=True)
     area = models.FloatField()
     total_apartment = models.FloatField()
     active = models.BooleanField(default=True)
@@ -31,11 +36,11 @@ class Apartment(BaseModel):
     number = models.CharField(max_length=10)
     floor = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     price = models.FloatField()
-    description = models.TextField()
-    area = models.FloatField()
+    description = RichTextField(null=True, blank=True)
+    area = models.DecimalField(max_digits=6, decimal_places=2)
     active = models.BooleanField(default=True)
 
-    building = models.ForeignKey(Building, on_delete=models.CASCADE)
+    building = models.ForeignKey(Building, on_delete=models.CASCADE, related_name='apartments', default=1)
 
     def __str__(self):
         return self.number
@@ -50,28 +55,32 @@ class Apartment(BaseModel):
 
 class Resident(BaseModel):
     relationship_to_head = [
-        ('CH', 'Chủ hộ'),
-        ('VC', 'Vợ/chồng'),
-        ('CT', 'Con cái'),
-        ('KH', 'Khác'),
+        ('owner', 'Chủ hộ'),
+        ('wife/husband', 'Vợ/Chồng'),
+        ('child', 'Con cái'),
+        ('parent', 'Cha/Mẹ'),
+        ('other', 'Khác')
     ]
     gender = [
-        ('M', 'Nam'),
-        ('F', 'Nữ'),
+        ('Male', 'Nam'),
+        ('Female', 'Nữ'),
     ]
+
     name = models.CharField(max_length=100)
-    identity_card = models.CharField(max_length=12)
-    gender = models.CharField(max_length=2, choices=gender, default=0)
+    identity_card = models.CharField(max_length=12, unique=True)
+    gender = models.CharField(max_length=6, choices=gender, default=0)
     birthday = models.DateField()
     phone = models.CharField(max_length=10)
-    relationship_to_head = models.CharField(max_length=2,default=1, choices=relationship_to_head)
+    relationship_to_head = models.CharField(max_length=12,default=1, choices=relationship_to_head)
+    active = models.BooleanField(default=True)
 
+    user = models.OneToOneField('User', on_delete=models.CASCADE, null=True, blank=True)
     apartment = models.ForeignKey(Apartment,default=1, related_name='residents', on_delete=models.CASCADE)
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # Nếu người này là chủ hộ
-        if self.relationship_to_head == 'CH':
+        if self.relationship_to_head == 'owner':
 
             # Kiểm tra nếu căn hộ đã có chủ
             if self.apartment.household_head and self.apartment.household_head != self:
@@ -85,20 +94,37 @@ class Resident(BaseModel):
         return self.name
 
 class LockerItem(BaseModel):
-    locker_number = models.CharField(max_length=10, unique=True,default=1)
+    locker_number = models.CharField(max_length=10,default=1)
     resident = models.OneToOneField(Resident, on_delete=models.CASCADE)
-    destination = models.CharField(max_length=100)
+    description = models.CharField(max_length=100)
+
+    def __str__(self):
+        return f"{self.locker_number} - {self.resident.name}"
+
+class Item(BaseModel):
+    locker_item = models.ForeignKey(LockerItem, on_delete=models.CASCADE, related_name='items')
+    name_item = models.CharField(max_length=100)
+    description_item = models.CharField(max_length=100, null=True, blank=True)
     status = models.CharField(max_length=50, choices=[
         ('waiting', 'Chờ nhận'),
         ('received', 'Đã nhận')
     ], default='waiting')
     received_at = models.DateTimeField(null=True, blank=True)
 
+class Visitor(BaseModel):
+    resident = models.ForeignKey(Resident, on_delete=models.CASCADE)
+    full_name = models.CharField(max_length=100)
+    identity_card = models.CharField(max_length=12, unique=True)
+    phone = models.CharField(max_length=10, default=0)
+    relationship_to_resident = models.CharField(max_length=50)
+    active = models.BooleanField(default=True)
+
     def __str__(self):
-        return self.resident.name
+        return self.full_name
 
 class ParkingCard(BaseModel):
-    resident = models.OneToOneField(Resident, on_delete=models.CASCADE)
+    resident = models.OneToOneField(Resident, on_delete=models.CASCADE, null=True, blank=True)
+    visitor = models.OneToOneField(Visitor, on_delete=models.CASCADE, null=True, blank=True, related_name='parking_card')
     card_number = models.CharField(max_length=10, unique=True)
     license_plate = models.CharField(max_length=20)
     vehicle_type = models.CharField(max_length=20, choices=[
@@ -107,19 +133,28 @@ class ParkingCard(BaseModel):
         ('bike', 'Xe đạp'),
         ('Other', 'Khác'),
     ])
+    color = models.CharField(max_length=20,default='Trắng')
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if not self.resident and not self.visitor:
+            raise ValidationError('Thẻ phải thuộc về cư dân hoặc người thân.')
+        if self.resident and self.visitor:
+            raise ValidationError('Chỉ được gán thẻ cho 1 trong 2: cư dân hoặc người thân.')
 
     def __str__(self):
         return f"{self.card_number} - {self.license_plate}"
 
 class FeeType(BaseModel):
     name = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
+    description = RichTextField(null=True, blank=True)
 
     def __str__(self):
         return self.name
 
 class Invoice(BaseModel):
-    resident = models.ForeignKey(Resident, on_delete=models.CASCADE)
+    apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name='invoices', default=1)
+    resident = models.ForeignKey(Resident, on_delete=models.CASCADE, related_name='invoices')
     fee_type = models.OneToOneField(FeeType, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     due_date = models.DateField()
@@ -136,14 +171,51 @@ class Payment(BaseModel):
         ('momo', 'Momo'),
         ('vnpay', 'VNPay')
     ])
-    #proof_image = models.ImageField(upload_to='payments/', null=True, blank=True)
+    proof_image = CloudinaryField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=[
         ('pending', 'Chờ xác nhận'),
         ('approved', 'Đã duyệt'),
         ('rejected', 'Từ chối')
     ], default='pending')
 
+    def __str__(self):
+        return f"{self.resident.name} - {self.invoice.id}"
 
 
+class Complaint(BaseModel):
+    resident = models.ForeignKey(Resident, on_delete=models.CASCADE)
+    title = models.CharField(max_length=255)
+    content = RichTextField()
+    status = models.CharField(max_length=20, choices=[
+        ('pending', 'Chờ xử lý'),
+        ('resolved', 'Đã xử lý'),
+    ], default='pending', )
+    is_resolved = models.BooleanField(default=False,)
 
+    def __str__(self):
+        return f"{self.resident.name} - {self.title}"
+
+class ComplaintResponse(BaseModel):
+    complaint = models.ForeignKey(Complaint, on_delete=models.CASCADE, related_name="responses")
+    responder = models.ForeignKey(User, on_delete=models.CASCADE, limit_choices_to={'is_staff': True})
+    content = RichTextField()
+
+    def __str__(self):
+        return f"Phản hồi bởi {self.responder.username} - {self.complaint}"
+
+class Survey(BaseModel):
+    title = models.CharField(max_length=255)
+    question = RichTextField()
+    options = models.JSONField(help_text="List các lựa chọn, ví dụ: ['Tốt', 'Trung bình', 'Kém']")
+    active = models.BooleanField(default=True)
+    def __str__(self):
+        return self.title
+
+class SurveyResponse(BaseModel):
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE)
+    resident = models.ForeignKey(Resident, on_delete=models.CASCADE)
+    answer = RichTextField()
+
+    def __str__(self):
+        return f"{self.resident.name} - {self.survey.title}"
 

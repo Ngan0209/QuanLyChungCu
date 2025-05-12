@@ -15,6 +15,8 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+MEDIA_ROOT = '%s/static/' % BASE_DIR
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -40,7 +42,44 @@ INSTALLED_APPS = [
     'chungcu.apps.ChungcuConfig',
     'rest_framework',
     'drf_yasg',
+    'oauth2_provider',
+    'ckeditor',
+    'ckeditor_uploader',
 ]
+
+AUTHENTICATION_BACKENDS = (
+    'django.contrib.auth.backends.ModelBackend',
+    'oauth2_provider.backends.OAuth2Backend',
+)
+
+CKEDITOR_UPLOAD_PATH = 'images/'
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'oauth2_provider.contrib.rest_framework.OAuth2Authentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    )
+}
+
+OAUTH2_PROVIDER = { 'OAUTH2_BACKEND_CLASS': 'oauth2_provider.oauth2_backends.JSONOAuthLibCore' }
+
+CLIENT_ID ='5eqLWUoLXszkZZLQwXKYBV4BMz5PKGNv1XkTiTFs'
+CLIENT_SECRET = '8dIvAcj71Ow4sTQyC206D0oeiObn51SyoOAkIgtliySTheMkOPWtap5Y6FvJeGBdhhZ2UU7nidRYCoDRvspHV0BXi2753M5YV4HNrrhJIurc52UmiIjdyV7bKsUGcgMj'
+
+import cloudinary
+import cloudinary.uploader
+from cloudinary.utils import cloudinary_url
+
+# Configuration
+cloudinary.config(
+    cloud_name = "dauhkaecb",
+    api_key = "848373387842926",
+    api_secret = "fdfMgzXtAQNCVPjIryuihRtjVBM", # Click 'View API Keys' above to copy your API secret
+    secure=True
+)
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

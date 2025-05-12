@@ -4,11 +4,15 @@ from rest_framework import routers
 
 router = routers.DefaultRouter()
 
-router.register('building', views.BuildingViewSet, basename='building')
-router.register('apartment', views.ApartmentViewSet, basename='apartment')
-router.register('resident', views.ResidentViewSet, basename='resident')
-router.register('lockeritem', views.LockerItemViewSet, basename='lockeritem')
-router.register('parkingcard', views.ParkingCardViewSet, basename='parkingcard')
+router.register('buildings', views.BuildingViewSet, basename='building')
+router.register('apartments', views.ApartmentViewSet, basename='apartment')
+router.register('residents', views.ResidentViewSet, basename='resident')
+router.register('lockeritems', views.LockerItemViewSet, basename='lockeritem')
+router.register('parkingcards', views.ParkingCardViewSet, basename='parkingcard')
+router.register('visitors', views.VisitorViewSet, basename='visitor')
+router.register('invoices', views.InvoiceViewSet, basename='invoice')
+router.register('complaints', views.ComplaintViewSet, basename='complaint')
+router.register('users', views.UserViewSet, basename='user')
 
 
 
