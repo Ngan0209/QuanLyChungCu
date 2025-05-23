@@ -1,6 +1,3 @@
-from contextlib import nullcontext
-from tkinter.font import names
-from xml.dom import ValidationErr
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -205,17 +202,44 @@ class ComplaintResponse(BaseModel):
 
 class Survey(BaseModel):
     title = models.CharField(max_length=255)
-    question = RichTextField()
-    options = models.JSONField(help_text="List các lựa chọn, ví dụ: ['Tốt', 'Trung bình', 'Kém']")
-    active = models.BooleanField(default=True)
+    description = RichTextField(null=True, blank=True)
+    deadline = models.DateTimeField(null=True, blank=True)
     def __str__(self):
         return self.title
 
-class SurveyResponse(BaseModel):
-    survey = models.ForeignKey(Survey, on_delete=models.CASCADE)
-    resident = models.ForeignKey(Resident, on_delete=models.CASCADE)
-    answer = RichTextField()
+
+class Question(BaseModel):
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name='questions')
+    text = models.TextField()
+    QUESTION_TYPES = (
+        ('single', 'Single Choice'),
+        ('multiple', 'Multiple Choice'),
+    )
+    type = models.CharField(max_length=10, choices=QUESTION_TYPES, default='single')
+    def __str__(self):
+        return f"{self.survey.title} - {self.text}"
+
+class Choice(BaseModel):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, default=1)
+    text = models.CharField(max_length=255)
 
     def __str__(self):
-        return f"{self.resident.name} - {self.survey.title}"
+        return self.text
+
+
+class SurveyResponse(BaseModel):
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name='responses')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='survey_responses', default=1)
+    def __str__(self):
+        return f"{self.user.username} - {self.survey.title}"
+
+class Answer(models.Model):
+    response = models.ForeignKey(SurveyResponse, on_delete=models.CASCADE, related_name='answers')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    choices = models.ManyToManyField(Choice)  # phù hợp cả single/multiple choice
+
+    def __str__(self):
+        return f"{self.response.survey.title} - {self.question} - {self.choices}"
+
+
 

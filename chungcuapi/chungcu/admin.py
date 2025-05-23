@@ -1,9 +1,10 @@
-from ckeditor.widgets import CKEditorWidget
+
 from ckeditor_uploader.widgets import CKEditorUploadingWidget
 from django.contrib import admin
 from django import forms
-from .models import (Building, Apartment, Resident, LockerItem, Payment, ParkingCard, Visitor, Survey, SurveyResponse,
-                     Complaint, FeeType, Invoice, Item, ComplaintResponse)
+from .models import *
+import nested_admin
+
 
 class BuildingForm(forms.ModelForm):
     description = forms.CharField(widget=CKEditorUploadingWidget)
@@ -91,26 +92,33 @@ class ComplaintResponeAdmin(admin.ModelAdmin):
     search_fields = ['complaint__resident__name', 'complaint__title']
 
 class SurveyForm(forms.ModelForm):
-    question = forms.CharField(widget=CKEditorUploadingWidget)
+    description = forms.CharField(widget=CKEditorUploadingWidget)
     class Meta:
         model = Survey
         fields = '__all__'
 
-class SurveyAdmin(admin.ModelAdmin):
-    form = SurveyForm
-    list_filter = list_display = ['id', 'title', 'create_time']
-    search_fields = ['title','create_time']
+class ChoiceInlineAdmin(nested_admin.NestedTabularInline):
+    model = Choice
+    extra = 2
 
-class SurveyReponseForm(forms.ModelForm):
-    answer = forms.CharField(widget=CKEditorUploadingWidget)
-    class Meta:
-        model = SurveyResponse
-        fields = '__all__'
+class QuestionInlineAdmin(nested_admin.NestedStackedInline):
+    model = Question
+    inlines = [ChoiceInlineAdmin]
+    extra = 2
+
+class SurveyAdmin(nested_admin.NestedModelAdmin):
+    form = SurveyForm
+    list_filter = list_display = ['id', 'title', 'create_time', 'deadline']
+    search_fields = ['title','create_time']
+    inlines = [QuestionInlineAdmin]
 
 class SurveyResponseAdmin(admin.ModelAdmin):
-    form = SurveyReponseForm
-    list_filter = list_display = ['id', 'survey__title', 'resident__name']
-    search_fields = ['survey__title', 'resident__name']
+    list_filter = list_display = ['id', 'survey__title', 'user__username']
+    search_fields = ['survey__title', 'user__username']
+
+class AnswerAdmin(admin.ModelAdmin):
+    list_filter = list_display = ['id','response__user__username','response__survey__title','choices__text']
+    search_fields = ['id','id','response__user__username','response__survey__title']
 
 class ChungCuAppAdminSite(admin.AdminSite):
     site_header = 'Hệ thống quản lý chung cư'
@@ -132,3 +140,4 @@ admin_site.register(Complaint, ComplaintAdmin)
 admin_site.register(ComplaintResponse, ComplaintResponeAdmin)
 admin_site.register(Survey, SurveyAdmin)
 admin_site.register(SurveyResponse, SurveyResponseAdmin)
+admin_site.register(Answer, AnswerAdmin)

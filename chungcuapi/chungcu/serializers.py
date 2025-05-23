@@ -122,6 +122,40 @@ class ComplaintResponseDetailSerializer(ComplaintResponseSerializer):
         model = ComplaintResponseSerializer.Meta.model
         fields = ComplaintResponseSerializer.Meta.fields + ['complaint']
 
+class ChoiceSerializer(ModelSerializer):
+    class Meta:
+        model = Choice
+        fields = ['id','text']
+
+class QuestionSerializer(ModelSerializer):
+    # choices = ChoiceSerializer(many=True)
+    class Meta:
+        model = Question
+        fields = ['id','text']
+
+class SurveySerializer(ModelSerializer):
+    class Meta:
+        model = Survey
+        fields = ['id','title']
+
+class SurveyDetailSerializer(SurveySerializer):
+    questions = QuestionSerializer(many=True)
+    class Meta:
+        model = SurveySerializer.Meta.model
+        fields = SurveySerializer.Meta.fields + ['questions']
+
+class SurveyResponseSerializer(ModelSerializer):
+    survey = SurveySerializer(many=True)
+    class Meta:
+        model = SurveyResponse
+        fields = ['id','survey']
+
+class AnswerSerializer(ModelSerializer):
+    choices = ChoiceSerializer(many=True)
+    class Meta:
+        model = Answer
+        fields = ['id','response','question','choices']
+
 class UserSerializer(ModelSerializer):
     resident = PrimaryKeyRelatedField(queryset=Resident.objects.all(),
                                                   write_only=True)  # Chỉ chọn resident có sẵn
@@ -164,3 +198,10 @@ class UserSerializer(ModelSerializer):
             resident_obj.save()
 
         return user
+
+    # def update(self, instance, validated_data):
+    #     password = validated_data.pop('password', None)
+    #     if password:
+    #         instance.set_password(password)
+    #
+    #     return super().update(instance, validated_data)

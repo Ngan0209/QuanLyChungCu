@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'oauth2_provider',
     'ckeditor',
     'ckeditor_uploader',
+    'nested_admin'
 ]
 
 AUTHENTICATION_BACKENDS = (

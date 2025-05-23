@@ -68,7 +68,6 @@ class ApartmentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Upda
 class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.CreateAPIView, generics.UpdateAPIView,
                       generics.DestroyAPIView, generics.ListAPIView):
     queryset =  Resident.objects.select_related('apartment').all()
-    #serializer_class = serializers.ResidentDetailSerializer
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -83,7 +82,7 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
         # Nếu là cư dân, kiểm tra quyền sở hữu
         if self.action in ['retrieve', 'get_invoices', 'get_invoice_detail',
                            'get_parkingcard', 'get_lockeritem', 'get_item_detail',
-                           'get_complaint','get_complaint_detail']:
+                           'get_complaints','get_complaint_detail', 'get_answers','get_answer_detail']:
             return [permissions.IsAuthenticated(), perms.IsOwner()]
 
         return [perms.IsAdminUser()]
@@ -122,12 +121,28 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
         complaints = self.get_object().complaint_set.all()
         return Response(serializers.ComplaintSerializer(complaints, many=True).data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get'], url_path='complaint/(?P<complaint_id>[^/.]+)')
+    @action(detail=True, methods=['get'], url_path='complaints/(?P<complaint_id>[^/.]+)')
     def get_complaint_detail(self, request, pk, complaint_id):
         resident = self.get_object()
         complaint = get_object_or_404(resident.complaint_set, pk=complaint_id)
         serializer = serializers.ComplaintDetailSerializer(complaint)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='answers')
+    def get_answers(self, request, pk=None):
+        # Lấy resident cụ thể
+        resident = self.get_object()
+        user = resident.user
+
+        # Lấy tất cả answers thông qua các survey responses của user đó
+        answers = Answer.objects.filter(response__user=user)
+
+        # Serialize và trả kết quả
+        serializer = serializers.AnswerSerializer(answers, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
 
 class LockerItemViewSet(viewsets.ModelViewSet):
     queryset =  LockerItem.objects.prefetch_related('items').all()
@@ -188,6 +203,21 @@ class ComplaintResponseViewSet(viewsets.ModelViewSet):
 
     permission_classes = [perms.IsAdminUser]
 
+class SurveyViewSet(viewsets.ModelViewSet):
+    queryset = Survey.objects.all()
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return serializers.SurveyDetailSerializer
+        return serializers.SurveySerializer
+
+    permission_classes = [perms.IsAdminUser]
+
+class AnswerViewSet(viewsets.ViewSet,  RetrieveAPIView, ListAPIView):
+    queryset = Answer.objects.all()
+    serializer_class = serializers.AnswerSerializer
+
+    permission_classes = [perms.IsAdminUser]
+
 class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, RetrieveAPIView, ListAPIView, ):
     queryset = User.objects.filter(is_active = True)
     serializer_class = serializers.UserSerializer
@@ -209,7 +239,7 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, RetrieveAPIView, Lis
         u = request.user
         if request.method.__eq__('PATCH'):
             for k,v in request.data.items():
-                if k in ['first_name', 'last_name']:
+                if k in ['first_name', 'last_name','username','avatar']:
                     setattr(u, k, v)
                 elif k.__eq__('password'):
                      u.set_password(v)
