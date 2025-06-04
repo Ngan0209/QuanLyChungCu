@@ -16,18 +16,26 @@ class BuildingSerializer(ModelSerializer):
 class ApartmentSerializer(ModelSerializer):
     class Meta:
         model = Apartment
-        fields = ['id', 'number','household_head','create_time','update_time']
+        fields = ['id', 'number','household_head','floor','price','area','create_time','update_time']
+        read_only_fields = ['household_head','create_time','update_time']
 
 class ResidentSerializer(ModelSerializer):
-    apartment = ApartmentSerializer(many=False)
+    apartment = PrimaryKeyRelatedField(queryset=Apartment.objects.all())
     class Meta:
         model = Resident
-        fields = ['id', 'name','apartment', 'relationship_to_head']
+        fields = ['id', 'name','apartment', 'relationship_to_head','user']
+        read_only_fields = ['user']
 
-class ResidentDetailSerializer(ResidentSerializer):
+class ResidentCreateSerializer(ResidentSerializer):
     class Meta:
         model = ResidentSerializer.Meta.model
-        fields = ResidentSerializer.Meta.fields + ['identity_card','gender','phone']
+        fields = ResidentSerializer.Meta.fields + ['birthday','identity_card','gender','phone']
+
+class ResidentDetailSerializer(ResidentSerializer):
+    apartment = ApartmentSerializer(many=False)
+    class Meta:
+        model = ResidentSerializer.Meta.model
+        fields = ResidentSerializer.Meta.fields + ['birthday', 'identity_card', 'gender', 'phone']
 
 class ItemSerializer(ModelSerializer):
     class Meta:
@@ -180,6 +188,7 @@ class SurveyResponseSerializer(ModelSerializer):
     class Meta:
         model = SurveyResponse
         fields = ['id','survey','answers']
+        read_only_fields = ['survey']
 
     def create(self, validated_data):
         user = self.context['request'].user

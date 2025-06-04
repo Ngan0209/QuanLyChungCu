@@ -70,8 +70,10 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
     queryset =  Resident.objects.select_related('apartment').all()
 
     def get_serializer_class(self):
-        if self.action == 'retrieve':
+        if self.action  == 'retrieve':
             return serializers.ResidentDetailSerializer
+        elif self.action == 'create':
+            return serializers.ResidentCreateSerializer
         return serializers.ResidentSerializer
 
     def get_permissions(self):
@@ -83,7 +85,8 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
         if self.action in ['retrieve', 'get_invoices', 'get_invoice_detail',
                            'get_parkingcard', 'get_lockeritem', 'get_item_detail',
                            'get_complaints','get_complaint_detail', 'get_answers','get_answer_detail',
-                           'get_visitors','get_visitors_detail','add_visitor']:
+                           'get_visitors','get_visitors_detail','add_visitor','submit_survey_response',
+                           'get_survey_response','get_surveys']:
             return [permissions.IsAuthenticated(), perms.IsOwner()]
 
         return [perms.IsAdminUser()]
@@ -153,18 +156,50 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['get'], url_path='answers')
-    def get_answers(self, request, pk=None):
-        # Lấy resident cụ thể
-        resident = self.get_object()
-        user = resident.user
+    @action(detail=True, methods=['post'], url_path='surveys/(?P<survey_id>[^/.]+)/responses')
+    def submit_survey_response(self, request, pk=None, survey_id=None):
 
-        # Lấy tất cả answers thông qua các survey responses của user đó
-        answers = Answer.objects.filter(response__user=user)
+        survey = get_object_or_404(Survey, id=survey_id)
 
-        # Serialize và trả kết quả
-        serializer = serializers.AnswerSerializer(answers, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # Kiểm tra đã trả lời chưa
+        if SurveyResponse.objects.filter(user=request.user, survey=survey).exists():
+            return Response({'detail': 'You have already submitted this survey.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = serializers.SurveyResponseSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save(survey=survey)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], url_path='surveys')
+    def get_surveys(self, request, pk=None):
+        surveys = Survey.objects.all().prefetch_related('responses')
+
+        result = []
+        for survey in surveys:
+            has_responded = survey.responses.filter(user=request.user).exists()
+            result.append({
+                'id': survey.id,
+                'title': survey.title,
+                'description': survey.description,
+                'deadline': survey.deadline,
+                'has_responded': has_responded
+            })
+
+        return Response(result)
+
+    @action(detail=True, methods=['get'], url_path='surveys/(?P<survey_id>[^/.]+)')
+    def get_survey_response(self, request, pk=None, survey_id=None):
+
+        survey = get_object_or_404(Survey, id=survey_id)
+        response = SurveyResponse.objects.filter(user=request.user, survey=survey).prefetch_related('answers__choices',
+                                                                                                    'answers__question').first()
+
+        if not response:
+            return Response({'detail': 'You have not answered this survey yet.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = serializers.SurveyResponseDisplaySerializer(response)
+        return Response(serializer.data)
 
 class LockerItemViewSet(viewsets.ModelViewSet):
     queryset =  LockerItem.objects.prefetch_related('items').all()
@@ -298,15 +333,6 @@ class SurveyViewSet(viewsets.ModelViewSet):
         )
         serializer = serializers.SurveyResponseDisplaySerializer(responses, many=True)
         return Response(serializer.data)
-
-
-class SurveyResponseViewSet(viewsets.ModelViewSet):
-    queryset = SurveyResponse.objects.all()
-    serializer_class = serializers.SurveyResponseSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
 
 class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, RetrieveAPIView, ListAPIView ):
     queryset = User.objects.filter(is_active = True)
