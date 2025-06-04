@@ -1,4 +1,4 @@
-from rest_framework.serializers import ModelSerializer, PrimaryKeyRelatedField
+from rest_framework.serializers import CharField, ModelSerializer, PrimaryKeyRelatedField, StringRelatedField
 from chungcu.models import *
 
 class IamgeSerializer(ModelSerializer):
@@ -43,7 +43,7 @@ class LockerItemSerializer(ModelSerializer):
 class ItemDetailSerializer(ModelSerializer):
     class Meta:
         model = ItemSerializer.Meta.model
-        fields = ItemSerializer.Meta.fields + ['status','received_at']
+        fields = ItemSerializer.Meta.fields + ['description_item','status','received_at']
 
 class ParkingCardSerializer(ModelSerializer):
     class Meta:
@@ -56,16 +56,20 @@ class ParkingCardDetailSerializer(ParkingCardSerializer):
         fields = ParkingCardSerializer.Meta.fields + ['vehicle_type','license_plate', 'color']
 
 class VisitorSerializer(ModelSerializer):
-    resident = ResidentSerializer(many=False)
     class Meta:
         model = Visitor
-        fields = ['id','full_name','resident', 'relationship_to_resident']
+        fields = ['id', 'full_name', 'relationship_to_resident', 'identity_card', 'phone']
+        extra_kwargs = {
+            'identity_card': {'required': True},
+            'phone': {'required': True},
+        }
 
 class VisitorDetailSerializer(VisitorSerializer):
-    parking_card = ParkingCardSerializer(many=False)
+    parking_card = ParkingCardSerializer(many=False, read_only=True)
+
     class Meta:
         model = VisitorSerializer.Meta.model
-        fields = VisitorSerializer.Meta.fields + ['identity_card','phone','parking_card']
+        fields = VisitorSerializer.Meta.fields + ['resident','is_approved','parking_card']
 
 
 class FeeTypeSerializer(ModelSerializer):
@@ -88,6 +92,7 @@ class ComplaintResponseSerializer(ModelSerializer):
     class Meta:
         model = ComplaintResponse
         fields = ['id', 'responder','content','create_time']
+        read_only_fields = ['responder', 'create_time']
 
 class ComplaintSerializer(ModelSerializer):
     class Meta:
@@ -128,10 +133,10 @@ class ChoiceSerializer(ModelSerializer):
         fields = ['id','text']
 
 class QuestionSerializer(ModelSerializer):
-    # choices = ChoiceSerializer(many=True)
+    choices = ChoiceSerializer(many=True)
     class Meta:
         model = Question
-        fields = ['id','text']
+        fields = ['id','text', 'type', 'choices']
 
 class SurveySerializer(ModelSerializer):
     class Meta:
@@ -139,22 +144,72 @@ class SurveySerializer(ModelSerializer):
         fields = ['id','title']
 
 class SurveyDetailSerializer(SurveySerializer):
-    questions = QuestionSerializer(many=True)
+    questions = QuestionSerializer(many=True, read_only=True)
+
     class Meta:
         model = SurveySerializer.Meta.model
-        fields = SurveySerializer.Meta.fields + ['questions']
+        fields = SurveySerializer.Meta.fields + ['description', 'deadline', 'questions']
 
-class SurveyResponseSerializer(ModelSerializer):
-    survey = SurveySerializer(many=True)
+
+class SurveyCreateSerializer(ModelSerializer):
+    questions = QuestionSerializer(many=True)
+
     class Meta:
-        model = SurveyResponse
-        fields = ['id','survey']
+        model = Survey
+        fields = ['title', 'description', 'deadline', 'questions']
+
+    def create(self, validated_data):
+        questions_data = validated_data.pop('questions')
+        survey = Survey.objects.create(**validated_data)
+        for question_data in questions_data:
+            choices_data = question_data.pop('choices')
+            question = Question.objects.create(survey=survey, **question_data)
+            for choice_data in choices_data:
+                Choice.objects.create(question=question, **choice_data)
+        return survey
+
 
 class AnswerSerializer(ModelSerializer):
-    choices = ChoiceSerializer(many=True)
+    choices = PrimaryKeyRelatedField(many=True, queryset=Choice.objects.all())
     class Meta:
         model = Answer
-        fields = ['id','response','question','choices']
+        fields = ['question','choices']
+
+class SurveyResponseSerializer(ModelSerializer):
+    answers = AnswerSerializer(many=True)
+    class Meta:
+        model = SurveyResponse
+        fields = ['id','survey','answers']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        answers_data = validated_data.pop('answers')
+        response = SurveyResponse.objects.create(user=user, **validated_data)
+
+        for answer_data in answers_data:
+            choices = answer_data.pop('choices')
+            answer = Answer.objects.create(response=response, **answer_data)
+            answer.choices.set(choices)
+
+        return response
+
+class AnswerDisplaySerializer(ModelSerializer):
+    question = CharField(source='question.text')
+    choices = ChoiceSerializer(many=True)
+
+    class Meta:
+        model = Answer
+        fields = ['question', 'choices']
+
+
+class SurveyResponseDisplaySerializer(ModelSerializer):
+    user = StringRelatedField()
+    answers = AnswerDisplaySerializer(many=True)
+
+    class Meta:
+        model = SurveyResponse
+        fields = ['id', 'user', 'answers']
+
 
 class UserSerializer(ModelSerializer):
     resident = PrimaryKeyRelatedField(queryset=Resident.objects.all(),
@@ -162,7 +217,7 @@ class UserSerializer(ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'password', 'first_name', 'last_name', 'avatar', 'resident']
+        fields = ['username', 'password', 'first_name', 'last_name', 'avatar','is_active','is_staff', 'resident']
         extra_kwargs = {'password': {'write_only': True}}
 
     def to_representation(self, instance):
@@ -174,6 +229,11 @@ class UserSerializer(ModelSerializer):
             data['resident'] = ResidentSerializer(instance.resident).data
         else:
             data['resident'] = None
+
+        #chỉ có admin mới thấy được id
+        request = self.context.get('request')
+        if request and request.user.is_staff:
+            data['id'] = instance.id
         return data
 
     def create(self, validated_data):
@@ -199,9 +259,3 @@ class UserSerializer(ModelSerializer):
 
         return user
 
-    # def update(self, instance, validated_data):
-    #     password = validated_data.pop('password', None)
-    #     if password:
-    #         instance.set_password(password)
-    #
-    #     return super().update(instance, validated_data)

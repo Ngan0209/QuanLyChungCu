@@ -43,7 +43,7 @@ class ItemAdmin(admin.ModelAdmin):
     search_fields = ['name_item', 'locker_item__resident__name']
 
 class VisitorAdmin(admin.ModelAdmin):
-    list_filter = list_display = ['id', 'full_name', 'resident__name','relationship_to_resident']
+    list_filter = list_display = ['id', 'full_name', 'resident__name','relationship_to_resident','is_approved']
     search_fields = ['full_name','resident__name']
 
 class ParkingCardAdmin(admin.ModelAdmin):

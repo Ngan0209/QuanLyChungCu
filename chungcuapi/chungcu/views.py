@@ -82,7 +82,8 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
         # Nếu là cư dân, kiểm tra quyền sở hữu
         if self.action in ['retrieve', 'get_invoices', 'get_invoice_detail',
                            'get_parkingcard', 'get_lockeritem', 'get_item_detail',
-                           'get_complaints','get_complaint_detail', 'get_answers','get_answer_detail']:
+                           'get_complaints','get_complaint_detail', 'get_answers','get_answer_detail',
+                           'get_visitors','get_visitors_detail','add_visitor']:
             return [permissions.IsAuthenticated(), perms.IsOwner()]
 
         return [perms.IsAdminUser()]
@@ -92,7 +93,7 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
         invoices = self.get_object().invoices.all()
         return Response(serializers.InvoiceSerializer(invoices, many=True).data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get'], url_path='invoice/(?P<invoice_id>[^/.]+)')
+    @action(detail=True, methods=['get'], url_path='invoices/(?P<invoice_id>[^/.]+)')
     def get_invoice_detail(self, request, pk, invoice_id):
         resident = self.get_object()
         invoice = get_object_or_404(resident.invoices, pk=invoice_id)
@@ -128,6 +129,30 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
         serializer = serializers.ComplaintDetailSerializer(complaint)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='visitors')
+    def get_visitors(self, request, pk):
+        visitors = self.get_object().visitor_set.all()
+        return Response(serializers.VisitorSerializer(visitors, many=True).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='visitors/(?P<visitor_id>[^/.]+)')
+    def get_visitors_detail(self, request, pk, visitor_id):
+        resident = self.get_object()
+        visitor = get_object_or_404(resident.visitor_set, pk=visitor_id)
+        serializer = serializers.VisitorDetailSerializer(visitor)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='visitor')
+    def add_visitor(self, request, pk=None):
+
+        resident = Resident.objects.get(pk=pk, user=request.user)
+
+        serializer = serializers.VisitorSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(resident=resident, is_approved=False)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['get'], url_path='answers')
     def get_answers(self, request, pk=None):
         # Lấy resident cụ thể
@@ -141,12 +166,40 @@ class ResidentViewSet(viewsets.ViewSet, generics.RetrieveAPIView, generics.Creat
         serializer = serializers.AnswerSerializer(answers, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
-
-
 class LockerItemViewSet(viewsets.ModelViewSet):
     queryset =  LockerItem.objects.prefetch_related('items').all()
     serializer_class = serializers.LockerItemSerializer
+    permission_classes = [perms.IsAdminUser]
+
+    @action(detail=True, methods=['post'], url_path='item')
+    def add_item(self, request, pk=None):
+        locker_item = self.get_object()
+        data = request.data.copy()
+        data['locker_item'] = locker_item.id
+
+        serializer = serializers.ItemDetailSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['patch'], url_path='item/(?P<item_id>[^/.]+)')
+    def update_item(self, request, pk=None, item_id=None):
+        locker_item = self.get_object()
+        try:
+            item = locker_item.items.get(id=item_id)
+        except Item.DoesNotExist:
+            return Response({'detail': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = serializers.ItemDetailSerializer(item, data=request.data, partial=False)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ItemViewSet(viewsets.ViewSet, generics.DestroyAPIView):
+    queryset = Item.objects.all()
+    serializer_class = serializers.ItemSerializer
     permission_classes = [perms.IsAdminUser]
 
 class ParkingCardViewSet(viewsets.ModelViewSet):
@@ -156,11 +209,7 @@ class ParkingCardViewSet(viewsets.ModelViewSet):
 
 class VisitorViewSet(viewsets.ModelViewSet):
     queryset = Visitor.objects.prefetch_related('resident').all()
-
-    def get_serializer_class(self):
-        if self.action == 'retrieve':
-            return serializers.VisitorDetailSerializer
-        return serializers.VisitorSerializer
+    serializer_class = serializers.VisitorDetailSerializer
 
     permission_classes = [perms.IsAdminUser]
 
@@ -183,6 +232,12 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             return serializers.ComplaintDetailSerializer
         return serializers.ComplaintSerializer
 
+    #cư dân chỉ xem danh sách phản ánh của mình
+    def get_queryset(self):
+        if self.request.user.is_staff:
+            return Complaint.objects.all()
+        return Complaint.objects.filter(resident__user=self.request.user)
+
     def get_permissions(self):
         # Nếu admin đang thao tác, cho phép tất cả
         if self.request.user.is_staff:
@@ -193,6 +248,24 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             return [permissions.IsAuthenticated(), perms.IsOwner()]
 
         return [perms.IsAdminUser()]
+
+    @action(detail=True, methods=['post'], url_path='complaintresponses', permission_classes=[permissions.IsAdminUser])
+    def add_response(self, request, pk=None):
+        try:
+            complaint = self.get_object()
+        except Complaint.DoesNotExist:
+            return Response({"detail": "Complaint not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = serializers.ComplaintResponseSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(complaint=complaint, responder=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    #gán user khi cư dân tạo phản ánh
+    def perform_create(self, serializer):
+        resident = Resident.objects.get(user=self.request.user)
+        serializer.save(resident=resident)
 
 class ComplaintResponseViewSet(viewsets.ModelViewSet):
     queryset = ComplaintResponse.objects.all()
@@ -205,20 +278,37 @@ class ComplaintResponseViewSet(viewsets.ModelViewSet):
 
 class SurveyViewSet(viewsets.ModelViewSet):
     queryset = Survey.objects.all()
+
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return serializers.SurveyDetailSerializer
+        elif self.action == 'create':
+            return serializers.SurveyCreateSerializer
         return serializers.SurveySerializer
 
     permission_classes = [perms.IsAdminUser]
 
-class AnswerViewSet(viewsets.ViewSet,  RetrieveAPIView, ListAPIView):
-    queryset = Answer.objects.all()
-    serializer_class = serializers.AnswerSerializer
+    @action(detail=True, methods=['get'], url_path='responses')
+    def get_responses(self, request, pk=None):
+        survey = self.get_object()
+        responses = survey.responses.prefetch_related(
+            'answers__question',
+            'answers__choices',
+            'user'
+        )
+        serializer = serializers.SurveyResponseDisplaySerializer(responses, many=True)
+        return Response(serializer.data)
 
-    permission_classes = [perms.IsAdminUser]
 
-class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, RetrieveAPIView, ListAPIView, ):
+class SurveyResponseViewSet(viewsets.ModelViewSet):
+    queryset = SurveyResponse.objects.all()
+    serializer_class = serializers.SurveyResponseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return self.queryset.filter(user=self.request.user)
+
+class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, RetrieveAPIView, ListAPIView ):
     queryset = User.objects.filter(is_active = True)
     serializer_class = serializers.UserSerializer
     parser_classes = [parsers.MultiPartParser]
@@ -229,8 +319,8 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, RetrieveAPIView, Lis
             return [permissions.IsAuthenticated()]
 
         # Nếu là cư dân, kiểm tra quyền sở hữu
-        if self.action in ['retrieve', 'get_current_user' ]:
-            return [permissions.IsAuthenticated(), perms.IsOwner]
+        if self.action in ['get_current_user' ]:
+            return [permissions.IsAuthenticated(), perms.IsOwner()]
 
         return [perms.IsAdminUser()]
 
@@ -247,3 +337,21 @@ class UserViewSet(viewsets.ViewSet, generics.CreateAPIView, RetrieveAPIView, Lis
             u.save()
 
         return Response(serializers.UserSerializer(request.user).data)
+
+    def partial_update(self, request, pk=None):
+        print("===> Bắt đầu partial_update")
+        user = get_object_or_404(User, pk=pk)
+        data = request.data.copy()
+        print("===> Data nhận được:", data)
+
+        if not request.user.is_staff:
+            data.pop('is_active', None)
+            data.pop('is_staff', None)
+
+        serializer = self.serializer_class(user, data=data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            print("===> Lưu thành công")
+            return Response(serializer.data)
+        print("===> Lỗi validate:", serializer.errors)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

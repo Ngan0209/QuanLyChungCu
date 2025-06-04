@@ -119,6 +119,8 @@ class Visitor(BaseModel):
     def __str__(self):
         return self.full_name
 
+    is_approved = models.BooleanField(default=False)
+
 class ParkingCard(BaseModel):
     resident = models.OneToOneField(Resident, on_delete=models.CASCADE, null=True, blank=True)
     visitor = models.OneToOneField(Visitor, on_delete=models.CASCADE, null=True, blank=True, related_name='parking_card')
@@ -220,7 +222,7 @@ class Question(BaseModel):
         return f"{self.survey.title} - {self.text}"
 
 class Choice(BaseModel):
-    question = models.ForeignKey(Question, on_delete=models.CASCADE, default=1)
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, default=1, related_name= 'choices')
     text = models.CharField(max_length=255)
 
     def __str__(self):
@@ -236,7 +238,7 @@ class SurveyResponse(BaseModel):
 class Answer(models.Model):
     response = models.ForeignKey(SurveyResponse, on_delete=models.CASCADE, related_name='answers')
     question = models.ForeignKey(Question, on_delete=models.CASCADE)
-    choices = models.ManyToManyField(Choice)  # phù hợp cả single/multiple choice
+    choices = models.ManyToManyField(Choice)
 
     def __str__(self):
         return f"{self.response.survey.title} - {self.question} - {self.choices}"
