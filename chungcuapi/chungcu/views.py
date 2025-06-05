@@ -256,8 +256,75 @@ class VisitorViewSet(viewsets.ModelViewSet):
 
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.prefetch_related('fee_type').all()
-    serializer_class = serializers.InvoiceSerializer
-    permission_classes = [perms.IsAdminUser]
+
+    def get_permissions(self):
+        # Nếu admin đang thao tác, cho phép tất cả
+        if self.request.user.is_staff:
+            return [permissions.IsAuthenticated()]
+
+        # Nếu là cư dân, kiểm tra quyền sở hữu
+        if self.action in ['retrieve','list']:
+            return [permissions.IsAuthenticated()]
+
+        return [perms.IsAdminUser()]
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return serializers.InvoiceDetailSerializer
+        elif self.action == 'create':
+            return serializers.InvoiceCreateSerializer
+        return serializers.InvoiceSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return Invoice.objects.all()
+        elif hasattr(user, 'resident'):
+            return Invoice.objects.filter(resident=user.resident)
+        return Invoice.objects.none()
+
+
+class PaymentViewSet(viewsets.ModelViewSet):
+    queryset = Payment.objects.all()
+    serializer_class = serializers.PaymentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return Payment.objects.all()
+        return Payment.objects.filter(resident__user=user)
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    @action(detail=True, methods=['post'], permission_classes=[perms.IsAdminUser])
+    def approve(self, request, pk=None):
+        payment = self.get_object()
+        invoice = payment.invoice
+
+        payment.status = 'approved'
+        payment.save()
+
+        invoice.paid = True
+        invoice.status = 'approved'
+        invoice.save()
+
+        return Response({'detail': 'Thanh toán đã được duyệt.'})
+
+    @action(detail=True, methods=['post'], permission_classes=[perms.IsAdminUser])
+    def reject(self, request, pk=None):
+        payment = self.get_object()
+        invoice = payment.invoice
+
+        payment.status = 'rejected'
+        payment.save()
+
+        invoice.status = 'rejected'
+        invoice.save()
+
+        return Response({'detail': 'Thanh toán đã bị từ chối.'})
+
 
 class ComplaintViewSet(viewsets.ModelViewSet):
     queryset = Complaint.objects.all()

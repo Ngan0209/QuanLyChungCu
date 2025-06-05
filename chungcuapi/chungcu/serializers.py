@@ -86,15 +86,66 @@ class FeeTypeSerializer(ModelSerializer):
         fields = ['id', 'name']
 
 class InvoiceSerializer(ModelSerializer):
-    fee_type = FeeTypeSerializer(many=False)
+    fee_type = FeeTypeSerializer(many=False,read_only=True)
+    fee_type_id = PrimaryKeyRelatedField(
+        queryset=FeeType.objects.all(), source='fee_type', write_only=True
+    )
     class Meta:
         model = Invoice
-        fields = ['id','resident','fee_type','amount']
+        fields = ['id','resident','fee_type','fee_type_id','amount', 'paid']
 
-class InvoiceDetailSerializer(InvoiceSerializer):
+class InvoiceCreateSerializer(InvoiceSerializer):
     class Meta:
         model = InvoiceSerializer.Meta.model
-        fields = InvoiceSerializer.Meta.fields + ['paid','due_date']
+        fields = InvoiceSerializer.Meta.fields + ['due_date']
+        read_only_fields = ['paid']
+
+    def create(self, validated_data):
+        resident = validated_data.get('resident')
+
+        # Gán apartment từ resident
+        validated_data['apartment'] = resident.apartment
+
+        return super().create(validated_data)
+
+
+class InvoiceDetailSerializer(InvoiceSerializer):
+    resident_name = CharField(source='resident.name', read_only=True)
+    apartment_number = CharField(source='apartment.number', read_only=True)
+
+    class Meta:
+        model = InvoiceSerializer.Meta.model
+        fields = InvoiceSerializer.Meta.fields + [
+            'apartment_number', 'resident', 'resident_name', 'due_date'
+        ]
+
+class PaymentSerializer(ModelSerializer):
+    resident = PrimaryKeyRelatedField(read_only=True)
+    resident_name = CharField(source='resident.name', read_only=True)
+    invoice = InvoiceSerializer(read_only=True)
+    invoice_id = PrimaryKeyRelatedField(
+        queryset=Invoice.objects.filter(paid=False),
+        source='invoice',
+        write_only=True
+    )
+
+    class Meta:
+        model = Payment
+        fields = [
+            'id', 'resident', 'resident_name',
+            'invoice', 'invoice_id',
+            'method', 'proof_image', 'status',
+            'create_time', 'update_time'
+        ]
+        read_only_fields = ['status', 'create_time', 'update_time']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        resident = getattr(user, 'resident', None)
+        if not resident:
+            raise ValidationError({'resident': 'User is not linked to any resident.'})
+        validated_data['resident'] = resident
+        return super().create(validated_data)
 
 class ComplaintResponseSerializer(ModelSerializer):
     class Meta:

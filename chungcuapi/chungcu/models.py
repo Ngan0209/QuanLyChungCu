@@ -154,7 +154,7 @@ class FeeType(BaseModel):
 class Invoice(BaseModel):
     apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name='invoices', default=1)
     resident = models.ForeignKey(Resident, on_delete=models.CASCADE, related_name='invoices')
-    fee_type = models.OneToOneField(FeeType, on_delete=models.CASCADE)
+    fee_type = models.ForeignKey(FeeType, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     due_date = models.DateField()
     paid = models.BooleanField(default=False)
@@ -172,12 +172,12 @@ class Payment(BaseModel):
     ])
     proof_image = CloudinaryField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=[
-        ('pending', 'Chờ xác nhận'),
+        ('pending', 'Chờ duyệt'),
         ('approved', 'Đã duyệt'),
         ('rejected', 'Từ chối')
     ], default='pending')
 
-    def __str__(self):
+def __str__(self):
         return f"{self.resident.name} - {self.invoice.id}"
 
 

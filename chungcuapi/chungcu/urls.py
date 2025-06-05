@@ -12,10 +12,10 @@ router.register('items', views.ItemViewSet, basename='item')
 router.register('parkingcards', views.ParkingCardViewSet, basename='parkingcard')
 router.register('visitors', views.VisitorViewSet, basename='visitor')
 router.register('invoices', views.InvoiceViewSet, basename='invoice')
+router.register(r'payments', views.PaymentViewSet, basename='payment')
 router.register('complaints', views.ComplaintViewSet, basename='complaint')
 router.register('complaintresponses', views.ComplaintResponseViewSet, basename='complaintresponse')
 router.register('surveys', views.SurveyViewSet, basename='survey')
-
 router.register('users', views.UserViewSet, basename='user')
 
 
