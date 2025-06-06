@@ -388,7 +388,14 @@ class SurveyViewSet(viewsets.ModelViewSet):
             return serializers.SurveyCreateSerializer
         return serializers.SurveySerializer
 
-    permission_classes = [perms.IsAdminUser]
+    def get_permissions(self):
+        # Nếu admin đang thao tác, cho phép tất cả
+        if self.request.user.is_staff:
+            return [permissions.IsAuthenticated()]
+
+        # Nếu là cư dân, kiểm tra quyền sở hữu
+        if self.action in ['retrieve', 'list']:
+            return [permissions.IsAuthenticated()]
 
     @action(detail=True, methods=['get'], url_path='responses')
     def get_responses(self, request, pk=None):

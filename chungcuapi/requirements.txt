@@ -17,6 +17,7 @@ inflection==0.5.1
 jwcrypto==1.5.6
 oauthlib==3.2.2
 packaging==25.0
+pillow==11.2.1
 pycparser==2.22
 PyMySQL==1.1.1
 python-monkey-business==1.1.0
